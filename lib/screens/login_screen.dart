@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'home_screen.dart';
-import 'admin_dashboard.dart';
+import 'admin_login_screen.dart';
 import 'reg_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -15,19 +16,13 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // Text controllers
-  final TextEditingController emailController =
-      TextEditingController();
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
 
-  final TextEditingController passwordController =
-      TextEditingController();
-
-  // Screen states
   bool passwordVisible = false;
   bool isLoading = false;
 
-  // Backend API
-  final String apiUrl = 'http://localhost:3000/api/login';
+  final String apiUrl = 'http://127.0.0.1:3000/api/login';
 
   @override
   void dispose() {
@@ -36,15 +31,11 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // ==========================================
-  // LOGIN FUNCTION
-  // ==========================================
-
+  // RESIDENT LOGIN
   Future<void> login() async {
     final String email = emailController.text.trim();
     final String password = passwordController.text;
 
-    // Validate empty fields
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -60,7 +51,6 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Send request to Node.js backend
       final response = await http
           .post(
             Uri.parse(apiUrl),
@@ -78,7 +68,6 @@ class _LoginScreenState extends State<LoginScreen> {
       debugPrint('Login response status: ${response.statusCode}');
       debugPrint('Login response body: ${response.body}');
 
-      // Parse response
       final dynamic decodedResponse = jsonDecode(response.body);
 
       if (decodedResponse is! Map<String, dynamic>) {
@@ -90,10 +79,6 @@ class _LoginScreenState extends State<LoginScreen> {
       final Map<String, dynamic> responseData = decodedResponse;
 
       if (!mounted) return;
-
-      // ==========================================
-      // LOGIN SUCCESSFUL
-      // ==========================================
 
       if (response.statusCode == 200 &&
           responseData['success'] == true) {
@@ -108,20 +93,52 @@ class _LoginScreenState extends State<LoginScreen> {
         final Map<String, dynamic> user =
             Map<String, dynamic>.from(userData);
 
-        // Get user details from MySQL response
-        final String userName =
-            user['name']?.toString() ?? '';
+        final dynamic rawId = user['id'];
 
+        if (rawId == null) {
+          throw const FormatException(
+            'User ID is missing from the login response.',
+          );
+        }
+
+        final int? userId = int.tryParse(rawId.toString());
+
+        if (userId == null || userId <= 0) {
+          throw const FormatException(
+            'The user ID returned by the server is invalid.',
+          );
+        }
+
+        final String userName = user['name']?.toString() ?? '';
         final String apartmentNumber =
             user['apartment_number']?.toString() ?? '';
-
-        final String block =
-            user['block']?.toString() ?? '';
-
+        final String block = user['block']?.toString() ?? '';
         final String role =
             user['role']?.toString().toLowerCase() ?? 'resident';
 
-        // Display welcome message
+        // Admin accounts must use the separate Admin Login screen.
+        if (role == 'admin') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Please use the Admin Login button to access the dashboard.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
+
+        if (role != 'resident') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Your account does not have resident access.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Welcome, $userName!'),
@@ -130,31 +147,19 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         );
 
-        // Navigate according to account role
-        if (role == 'admin') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const AdminDashboard(),
+        // Open the resident home screen.
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute<void>(
+            builder: (context) => HomeScreen(
+              userId: userId,
+              userName: userName,
+              apartmentNumber: apartmentNumber,
+              block: block,
             ),
-          );
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => HomeScreen(
-                userName: userName,
-                apartmentNumber: apartmentNumber,
-                block: block,
-              ),
-            ),
-          );
-        }
+          ),
+        );
       } else {
-        // ==========================================
-        // LOGIN FAILED
-        // ==========================================
-
         final String message =
             responseData['message']?.toString() ??
                 'Login failed. Please try again.';
@@ -167,24 +172,33 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         );
       }
-    } on http.ClientException catch (e) {
+    } on TimeoutException {
       if (!mounted) return;
 
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('The server took too long to respond.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } on http.ClientException catch (e) {
       debugPrint('HTTP client error: $e');
+
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Could not reach the backend. Check the server and browser connection.',
+            'Could not reach the backend. Check that the server is running.',
           ),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 8),
         ),
       );
     } on FormatException catch (e) {
-      if (!mounted) return;
-
       debugPrint('Response format error: $e');
+
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -194,9 +208,9 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } catch (e) {
-      if (!mounted) return;
-
       debugPrint('Login error: $e');
+
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -214,22 +228,25 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ==========================================
-  // OPEN REGISTRATION SCREEN
-  // ==========================================
-
+  // OPEN RESIDENT REGISTRATION
   void openRegister() {
     Navigator.push(
       context,
-      MaterialPageRoute(
+      MaterialPageRoute<void>(
         builder: (context) => const RegScreen(),
       ),
     );
   }
 
-  // ==========================================
-  // LOGIN SCREEN UI
-  // ==========================================
+  // OPEN ADMIN LOGIN
+  void openAdminLogin() {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => const AdminLoginScreen(),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -240,12 +257,11 @@ class _LoginScreenState extends State<LoginScreen> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 500,
-              ),
+              constraints: const BoxConstraints(maxWidth: 500),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // App icon
+                  // APP ICON
                   Container(
                     width: 90,
                     height: 90,
@@ -262,9 +278,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 25),
 
-                  // App name
+                  // APP NAME
                   const Text(
                     'Smart Apartment',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -294,13 +311,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 35),
 
-                  // Email field
+                  // EMAIL FIELD
                   TextField(
                     controller: emailController,
                     keyboardType: TextInputType.emailAddress,
                     autofillHints: const [AutofillHints.email],
                     decoration: InputDecoration(
                       labelText: 'Email',
+                      floatingLabelBehavior: FloatingLabelBehavior.always,
                       hintText: 'Enter your registered email',
                       prefixIcon: const Icon(Icons.email_outlined),
                       filled: true,
@@ -314,7 +332,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 18),
 
-                  // Password field
+                  // PASSWORD FIELD
                   TextField(
                     controller: passwordController,
                     obscureText: !passwordVisible,
@@ -326,6 +344,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                     decoration: InputDecoration(
                       labelText: 'Password',
+                      floatingLabelBehavior: FloatingLabelBehavior.always,
                       hintText: 'Enter your password',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
@@ -351,7 +370,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 25),
 
-                  // Login button
+                  // RESIDENT LOGIN BUTTON
                   SizedBox(
                     width: double.infinity,
                     height: 55,
@@ -385,15 +404,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 20),
 
-                  // Registration navigation
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  // RESIDENT REGISTRATION LINK
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 4,
                     children: [
                       const Text(
                         "Don't have an account?",
-                        style: TextStyle(
-                          color: Colors.grey,
-                        ),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey),
                       ),
                       TextButton(
                         onPressed: isLoading ? null : openRegister,
@@ -412,6 +432,67 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const Text(
                     'Register an account before logging in.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // DIVIDER
+                  const Row(
+                    children: [
+                      Expanded(child: Divider()),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          'OR',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Expanded(child: Divider()),
+                    ],
+                  ),
+
+                  const SizedBox(height: 15),
+
+                  // ADMIN LOGIN BUTTON
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton.icon(
+                      onPressed: isLoading ? null : openAdminLogin,
+                      icon: const Icon(
+                        Icons.admin_panel_settings_outlined,
+                      ),
+                      label: const Text(
+                        'ADMIN LOGIN',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF2457C5),
+                        side: const BorderSide(
+                          color: Color(0xFF2457C5),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  const Text(
+                    'For apartment administrators only',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.grey,

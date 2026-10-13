@@ -1,19 +1,21 @@
-
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 import 'login_screen.dart';
-import 'admin_dashboard.dart';
 
 class ProfileScreen extends StatefulWidget {
+  final int userId;
   final String userName;
   final String apartmentNumber;
   final String block;
 
   const ProfileScreen({
     super.key,
+    required this.userId,
     required this.userName,
     required this.apartmentNumber,
     required this.block,
@@ -24,6 +26,8 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  static const String apiBaseUrl = 'http://127.0.0.1:3000/api';
+
   late String currentName;
   late String currentApartment;
   late String currentBlock;
@@ -35,9 +39,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+
     currentName = widget.userName;
     currentApartment = widget.apartmentNumber;
     currentBlock = widget.block;
+  }
+
+  // =========================================================
+  // LANGUAGE PREFERENCE
+  // =========================================================
+
+  // =========================================================
+// LANGUAGE PREFERENCE
+// =========================================================
+
+  void languagePreference() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('choose_language'.tr()),
+          content: RadioGroup<Locale>(
+            groupValue: context.locale,
+            onChanged: (Locale? locale) {
+              if (locale == null) return;
+
+              context.setLocale(locale);
+              Navigator.pop(dialogContext);
+            },
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<Locale>(
+                  title: Text('English'),
+                  value: Locale('en'),
+                ),
+                RadioListTile<Locale>(
+                  title: Text('తెలుగు'),
+                  value: Locale('te'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text('close'.tr()),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // =========================================================
@@ -47,6 +99,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void showProfileQr() {
     final profileData = jsonEncode({
       'type': 'resident_profile',
+      'id': widget.userId,
       'name': currentName,
       'apartmentNumber': currentApartment,
       'block': currentBlock,
@@ -54,20 +107,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     showDialog<void>(
       context: context,
-      barrierDismissible: true,
       builder: (dialogContext) {
         return Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 360,
-            ),
+            constraints: const BoxConstraints(maxWidth: 360),
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -81,7 +127,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 8),
                   const Text(
                     'My Profile QR',
-                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -93,17 +138,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Colors.grey.shade300,
-                      ),
+                      border: Border.all(color: Colors.grey.shade300),
                     ),
                     child: QrImageView(
                       data: profileData,
                       version: QrVersions.auto,
                       size: 200,
                       backgroundColor: Colors.white,
-                      errorCorrectionLevel:
-                          QrErrorCorrectLevel.M,
+                      errorCorrectionLevel: QrErrorCorrectLevel.M,
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -124,32 +166,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       fontSize: 14,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Scan this code to read the profile details '
-                    'encoded in it. Opening another resident’s '
-                    'profile automatically will be added in the '
-                    'next step.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 12,
-                    ),
-                  ),
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(dialogContext);
-                      },
+                      onPressed: () => Navigator.pop(dialogContext),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            const Color(0xFF1976D2),
+                        backgroundColor: const Color(0xFF1976D2),
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 13,
-                        ),
                       ),
                       child: const Text('CLOSE'),
                     ),
@@ -168,115 +192,175 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // =========================================================
 
   void editProfile() {
-    final nameController =
-        TextEditingController(text: currentName);
+    final nameController = TextEditingController(text: currentName);
     final apartmentController =
         TextEditingController(text: currentApartment);
-    final blockController =
-        TextEditingController(text: currentBlock);
+    final blockController = TextEditingController(text: currentBlock);
+
+    final messenger = ScaffoldMessenger.of(context);
 
     showDialog<void>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text(
-            'Edit Profile',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: InputDecoration(
-                    labelText: 'Name',
-                    prefixIcon:
-                        const Icon(Icons.person_outline),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 15),
-                TextField(
-                  controller: apartmentController,
-                  decoration: InputDecoration(
-                    labelText: 'Apartment Number',
-                    prefixIcon:
-                        const Icon(Icons.home_outlined),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 15),
-                TextField(
-                  controller: blockController,
-                  decoration: InputDecoration(
-                    labelText: 'Block',
-                    prefixIcon:
-                        const Icon(Icons.business_outlined),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-              },
-              child: const Text('CANCEL'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final newName =
-                    nameController.text.trim();
-                final newApartment =
-                    apartmentController.text.trim();
-                final newBlock =
-                    blockController.text.trim();
+        bool dialogSaving = false;
 
-                if (newName.isEmpty ||
-                    newApartment.isEmpty ||
-                    newBlock.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Please fill all fields.',
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text(
+                'Edit Profile',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      enabled: !dialogSaving,
+                      decoration: const InputDecoration(
+                        labelText: 'Name',
+                        prefixIcon: Icon(Icons.person_outline),
                       ),
                     ),
-                  );
-                  return;
-                }
-
-                setState(() {
-                  currentName = newName;
-                  currentApartment = newApartment;
-                  currentBlock = newBlock;
-                });
-
-                Navigator.pop(dialogContext);
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Profile updated successfully!',
+                    const SizedBox(height: 15),
+                    TextField(
+                      controller: apartmentController,
+                      enabled: !dialogSaving,
+                      decoration: const InputDecoration(
+                        labelText: 'Apartment Number',
+                        prefixIcon: Icon(Icons.home_outlined),
+                      ),
                     ),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1976D2),
-                foregroundColor: Colors.white,
+                    const SizedBox(height: 15),
+                    TextField(
+                      controller: blockController,
+                      enabled: !dialogSaving,
+                      decoration: const InputDecoration(
+                        labelText: 'Block',
+                        prefixIcon: Icon(Icons.business_outlined),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: const Text('SAVE'),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: dialogSaving
+                      ? null
+                      : () => Navigator.pop(dialogContext),
+                  child: const Text('CANCEL'),
+                ),
+                ElevatedButton(
+                  onPressed: dialogSaving
+                      ? null
+                      : () async {
+                          final newName = nameController.text.trim();
+                          final newApartment =
+                              apartmentController.text.trim();
+                          final newBlock = blockController.text.trim();
+
+                          if (newName.isEmpty ||
+                              newApartment.isEmpty ||
+                              newBlock.isEmpty) {
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Please fill all fields.'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() {
+                            dialogSaving = true;
+                          });
+
+                          try {
+                            final response = await http
+                                .put(
+                                  Uri.parse(
+                                    '$apiBaseUrl/residents/${widget.userId}',
+                                  ),
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: jsonEncode({
+                                    'name': newName,
+                                    'apartment_number': newApartment,
+                                    'block': newBlock,
+                                  }),
+                                )
+                                .timeout(const Duration(seconds: 15));
+
+                            final data =
+                                jsonDecode(response.body)
+                                    as Map<String, dynamic>;
+
+                            if (response.statusCode == 200 &&
+                                data['success'] == true) {
+                              if (!mounted || !dialogContext.mounted) {
+                                return;
+                              }
+
+                              setState(() {
+                                currentName = newName;
+                                currentApartment = newApartment;
+                                currentBlock = newBlock;
+                              });
+
+                              Navigator.pop(dialogContext);
+
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Profile saved to MySQL successfully!',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            } else {
+                              throw Exception(
+                                data['message'] ??
+                                    'Unable to update profile.',
+                              );
+                            }
+                          } catch (error) {
+                            if (!mounted || !dialogContext.mounted) {
+                              return;
+                            }
+
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Profile update failed: $error',
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+
+                            setDialogState(() {
+                              dialogSaving = false;
+                            });
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1976D2),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: dialogSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('SAVE'),
+                ),
+              ],
+            );
+          },
         );
       },
     ).then((_) {
@@ -299,9 +383,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             return AlertDialog(
               title: const Text(
                 'Notification Settings',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
               content: SingleChildScrollView(
                 child: Column(
@@ -314,8 +396,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         'Receive apartment announcements',
                       ),
                       value: announcementsEnabled,
-                      activeThumbColor:
-                          const Color(0xFF1976D2),
+                      activeThumbColor: const Color(0xFF1976D2),
                       onChanged: (value) {
                         setDialogState(() {
                           announcementsEnabled = value;
@@ -329,8 +410,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         'Receive payment and event reminders',
                       ),
                       value: remindersEnabled,
-                      activeThumbColor:
-                          const Color(0xFF1976D2),
+                      activeThumbColor: const Color(0xFF1976D2),
                       onChanged: (value) {
                         setDialogState(() {
                           remindersEnabled = value;
@@ -344,8 +424,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         'Receive complaint updates',
                       ),
                       value: complaintUpdatesEnabled,
-                      activeThumbColor:
-                          const Color(0xFF1976D2),
+                      activeThumbColor: const Color(0xFF1976D2),
                       onChanged: (value) {
                         setDialogState(() {
                           complaintUpdatesEnabled = value;
@@ -357,9 +436,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                  },
+                  onPressed: () => Navigator.pop(dialogContext),
                   child: const Text('DONE'),
                 ),
               ],
@@ -375,12 +452,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // =========================================================
 
   void changePassword() {
-    final currentPasswordController =
-        TextEditingController();
-    final newPasswordController =
-        TextEditingController();
-    final confirmPasswordController =
-        TextEditingController();
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+
+    final messenger = ScaffoldMessenger.of(context);
 
     showDialog<void>(
       context: context,
@@ -397,39 +473,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 TextField(
                   controller: currentPasswordController,
                   obscureText: true,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Current Password',
-                    prefixIcon:
-                        const Icon(Icons.lock_outline),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    prefixIcon: Icon(Icons.lock_outline),
                   ),
                 ),
                 const SizedBox(height: 15),
                 TextField(
                   controller: newPasswordController,
                   obscureText: true,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'New Password',
-                    prefixIcon:
-                        const Icon(Icons.lock_reset),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    prefixIcon: Icon(Icons.lock_reset),
                   ),
                 ),
                 const SizedBox(height: 15),
                 TextField(
                   controller: confirmPasswordController,
                   obscureText: true,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Confirm New Password',
-                    prefixIcon:
-                        const Icon(Icons.lock_reset),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    prefixIcon: Icon(Icons.lock_reset),
                   ),
                 ),
               ],
@@ -437,39 +501,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-              },
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('CANCEL'),
             ),
             ElevatedButton(
               onPressed: () {
                 final currentPassword =
                     currentPasswordController.text;
-                final newPassword =
-                    newPasswordController.text;
+                final newPassword = newPasswordController.text;
                 final confirmPassword =
                     confirmPasswordController.text;
 
                 if (currentPassword.isEmpty ||
                     newPassword.isEmpty ||
                     confirmPassword.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(
-                      content: Text(
-                        'Please fill all password fields.',
-                      ),
+                      content: Text('Please fill all password fields.'),
                     ),
                   );
                   return;
                 }
 
                 if (newPassword.length < 6) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(
                       content: Text(
-                        'New password must contain at least '
-                        '6 characters.',
+                        'New password must contain at least 6 characters.',
                       ),
                     ),
                   );
@@ -477,11 +535,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 }
 
                 if (newPassword != confirmPassword) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(
-                      content: Text(
-                        'New passwords do not match.',
-                      ),
+                      content: Text('New passwords do not match.'),
                     ),
                   );
                   return;
@@ -489,12 +545,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 Navigator.pop(dialogContext);
 
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   const SnackBar(
                     content: Text(
-                      'Password form validated. Connect this '
-                      'action to the backend to change the '
-                      'actual account password.',
+                      'Password form validated. Backend integration '
+                      'is required to change the actual password.',
                     ),
                   ),
                 );
@@ -528,93 +583,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'Help & Support',
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
-          content: SingleChildScrollView(
+          content: const SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Need help with the Smart Apartment application?',
-                  style: TextStyle(fontSize: 15),
                 ),
-                const SizedBox(height: 20),
-                supportRow(
-                  Icons.phone_outlined,
-                  'Contact Management',
-                  '98765 43210',
-                ),
-                const SizedBox(height: 15),
-                supportRow(
-                  Icons.email_outlined,
-                  'Email Support',
-                  'support@smartapartment.com',
-                ),
-                const SizedBox(height: 15),
-                supportRow(
-                  Icons.location_on_outlined,
-                  'Management Office',
-                  'Apartment Community Office',
-                ),
+                SizedBox(height: 20),
+                Text('Contact Management: 98765 43210'),
+                SizedBox(height: 15),
+                Text('Email Support: support@smartapartment.com'),
+                SizedBox(height: 15),
+                Text('Management Office: Apartment Community Office'),
               ],
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-              },
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('CLOSE'),
             ),
           ],
         );
       },
-    );
-  }
-
-  Widget supportRow(
-    IconData icon,
-    String title,
-    String value,
-  ) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8F1FF),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            icon,
-            color: const Color(0xFF1976D2),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.grey,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
@@ -631,23 +624,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'Logout',
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
-          content: const Text(
-            'Are you sure you want to logout?',
-          ),
+          content: const Text('Are you sure you want to logout?'),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-              },
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('CANCEL'),
             ),
             ElevatedButton(
               onPressed: () {
                 Navigator.pushAndRemoveUntil(
-                  context,
+                  dialogContext,
                   MaterialPageRoute<void>(
-                    builder: (context) =>
-                        const LoginScreen(),
+                    builder: (context) => const LoginScreen(),
                   ),
                   (route) => false,
                 );
@@ -719,7 +707,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // =========================================================
 
   Widget profileOption(
-    BuildContext context,
     IconData icon,
     String title,
     String subtitle,
@@ -771,7 +758,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // =========================================================
-  // BUILD
+  // BUILD PROFILE SCREEN
   // =========================================================
 
   @override
@@ -779,9 +766,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F8FF),
       appBar: AppBar(
-        title: const Text(
-          'Profile',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          'profile'.tr(),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFF1976D2),
         foregroundColor: Colors.white,
@@ -789,8 +776,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final double horizontalPadding =
-              constraints.maxWidth < 400 ? 12 : 20;
+          final horizontalPadding =
+              constraints.maxWidth < 400 ? 12.0 : 20.0;
 
           return SingleChildScrollView(
             padding: EdgeInsets.symmetric(
@@ -799,9 +786,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 700,
-                ),
+                constraints: const BoxConstraints(maxWidth: 700),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -845,12 +830,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         borderRadius: BorderRadius.circular(18),
                       ),
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Apartment Information',
-                            style: TextStyle(
+                          Text(
+                            'apartment_information'.tr(),
+                            style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
@@ -858,19 +842,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           const SizedBox(height: 18),
                           informationRow(
                             Icons.person_outline,
-                            'Name',
+                            'name'.tr(),
                             currentName,
                           ),
                           const SizedBox(height: 15),
                           informationRow(
                             Icons.home_outlined,
-                            'Apartment',
+                            'apartment'.tr(),
                             currentApartment,
                           ),
                           const SizedBox(height: 15),
                           informationRow(
                             Icons.business_outlined,
-                            'Block',
+                            'block'.tr(),
                             currentBlock,
                           ),
                         ],
@@ -880,70 +864,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 20),
 
                     profileOption(
-                      context,
+                      Icons.language,
+                      'language_preference'.tr(),
+                      'change_app_language'.tr(),
+                      languagePreference,
+                    ),
+                    profileOption(
                       Icons.qr_code_2,
-                      'My Profile QR',
-                      'Show your resident QR code',
+                      'my_profile_qr'.tr(),
+                      'show_resident_qr'.tr(),
                       showProfileQr,
                     ),
-
                     profileOption(
-                      context,
                       Icons.edit_outlined,
-                      'Edit Profile',
-                      'Update your personal information',
+                      'edit_profile'.tr(),
+                      'update_personal_information'.tr(),
                       editProfile,
                     ),
-
                     profileOption(
-                      context,
                       Icons.notifications_outlined,
-                      'Notification Settings',
-                      'Manage apartment notifications',
+                      'notification_settings'.tr(),
+                      'manage_notifications'.tr(),
                       notificationSettings,
                     ),
-
                     profileOption(
-                      context,
                       Icons.lock_outline,
-                      'Change Password',
-                      'Update your account password',
+                      'change_password'.tr(),
+                      'update_account_password'.tr(),
                       changePassword,
                     ),
-
                     profileOption(
-                      context,
                       Icons.help_outline,
-                      'Help & Support',
-                      'Get help with the application',
+                      'help_support'.tr(),
+                      'get_application_help'.tr(),
                       helpAndSupport,
                     ),
-
                     profileOption(
-                      context,
-                      Icons.admin_panel_settings_outlined,
-                      'Admin Dashboard',
-                      'Open administration panel',
-                      () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (context) =>
-                                const AdminDashboard(),
-                          ),
-                        );
-                      },
-                    ),
-
-                    profileOption(
-                      context,
                       Icons.logout,
-                      'Logout',
-                      'Sign out of your account',
+                      'logout'.tr(),
+                      'sign_out_account'.tr(),
                       logout,
                       isLogout: true,
                     ),
-
                     const SizedBox(height: 20),
                   ],
                 ),

@@ -1,367 +1,383 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'mycomplaints_screen.dart';
+import 'package:http/http.dart' as http;
 
 class ComplaintScreen extends StatefulWidget {
   const ComplaintScreen({super.key});
 
   @override
-  State<ComplaintScreen> createState() =>
-      _ComplaintScreenState();
+  State<ComplaintScreen> createState() => _ComplaintScreenState();
 }
 
-class _ComplaintScreenState
-    extends State<ComplaintScreen> {
+class _ComplaintScreenState extends State<ComplaintScreen> {
+  final _formKey = GlobalKey<FormState>();
 
-  String selectedCategory = 'Water';
-
-  final TextEditingController descriptionController =
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _apartmentController =
+      TextEditingController();
+  final TextEditingController _descriptionController =
       TextEditingController();
 
-  final List<String> categories = [
-    'Water',
+  String? _selectedCategory;
+  bool _isSubmitting = false;
+
+  // Flutter Web running in Chrome can use localhost.
+  // Change this if your backend runs on another computer.
+  static const String _apiUrl = 'http://localhost:3000/api/complaints';
+
+  final List<String> _categories = [
+    'Water Supply',
     'Electricity',
-    'Lift',
-    'Parking',
-    'Security',
     'Cleaning',
+    'Maintenance',
+    'Security',
+    'Parking',
+    'Lift',
     'Other',
   ];
 
-  @override
-  void dispose() {
-    descriptionController.dispose();
-    super.dispose();
-  }
+  Future<void> _submitComplaint() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
-  void submitComplaint() {
-    final description =
-        descriptionController.text.trim();
-
-    if (description.isEmpty) {
+    if (_selectedCategory == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Please enter your complaint description.',
-          ),
+          content: Text('Please select a complaint category.'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    // Get current date
-    final now = DateTime.now();
-
-    final date =
-        '${now.day.toString().padLeft(2, '0')}/'
-        '${now.month.toString().padLeft(2, '0')}/'
-        '${now.year}';
-
-    // Save complaint
-    ComplaintStorage.complaints.insert(
-      0,
-      Complaint(
-        category: selectedCategory,
-        description: description,
-        date: date,
-        status: 'Pending',
-      ),
-    );
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Complaint submitted successfully.',
-        ),
-        backgroundColor: Colors.green,
-      ),
-    );
-
-    descriptionController.clear();
-
     setState(() {
-      selectedCategory = 'Water';
+      _isSubmitting = true;
     });
+
+    try {
+      final now = DateTime.now();
+
+      final complaintData = {
+        'resident_name': _nameController.text.trim(),
+        'apartment_number': _apartmentController.text.trim(),
+        'category': _selectedCategory,
+        'description': _descriptionController.text.trim(),
+        'date':
+            '${now.day.toString().padLeft(2, '0')}-'
+            '${now.month.toString().padLeft(2, '0')}-'
+            '${now.year}',
+        // This version does not yet know the logged-in user's ID.
+        'user_id': null,
+      };
+
+      final response = await http
+          .post(
+            Uri.parse(_apiUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(complaintData),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (!mounted) return;
+
+      Map<String, dynamic> responseData = {};
+
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          responseData = decoded;
+        }
+      } catch (_) {
+        // The server may have returned a non-JSON response.
+      }
+
+      if (response.statusCode == 201 &&
+          responseData['success'] == true) {
+        _descriptionController.clear();
+
+        setState(() {
+          _selectedCategory = null;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Complaint submitted successfully!',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Resident name and apartment number are retained
+        // so the resident can submit another complaint.
+      } else {
+        final message =
+            responseData['message'] ??
+            responseData['error'] ??
+            'Failed to submit complaint.';
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$message (HTTP ${response.statusCode})',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not connect to the backend. '
+            'Check that your server is running. Details: $e',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
   }
 
-  void openMyComplaints() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            const MyComplaintsScreen(),
-      ),
-    );
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _apartmentController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+    const primaryBlue = Color(0xFF1565C0);
 
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F8FF),
       appBar: AppBar(
         title: const Text(
-          'Raise Complaint',
+          'Raise a Complaint',
           style: TextStyle(
             fontWeight: FontWeight.bold,
+            color: Colors.white,
           ),
         ),
-
-        backgroundColor: const Color(0xFF1976D2),
-        foregroundColor: Colors.white,
-        elevation: 0,
-
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.history),
-            tooltip: 'My Complaints',
-            onPressed: openMyComplaints,
-          ),
-        ],
+        backgroundColor: primaryBlue,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
-
       body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: 800,
-          ),
-
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-
-              children: [
-
-                // Category
-                const Text(
-                  'Complaint Category',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                DropdownButtonFormField<String>(
-                  initialValue: selectedCategory,
-
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white,
-
-                    border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(15),
-                      borderSide: BorderSide.none,
-                    ),
-
-                    contentPadding:
-                        const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 16,
-                    ),
-                  ),
-
-                  items: categories.map((category) {
-                    return DropdownMenuItem<String>(
-                      value: category,
-                      child: Text(category),
-                    );
-                  }).toList(),
-
-                  onChanged: (value) {
-                    if (value == null) return;
-
-                    setState(() {
-                      selectedCategory = value;
-                    });
-                  },
-                ),
-
-                const SizedBox(height: 25),
-
-                // Description
-                const Text(
-                  'Complaint Description',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                TextField(
-                  controller:
-                      descriptionController,
-
-                  maxLines: 6,
-
-                  decoration: InputDecoration(
-                    hintText:
-                        'Describe your complaint...',
-
-                    filled: true,
-                    fillColor: Colors.white,
-
-                    border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(15),
-                      borderSide: BorderSide.none,
-                    ),
-
-                    contentPadding:
-                        const EdgeInsets.all(16),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Image attachment
-                Container(
-                  width: double.infinity,
-
-                  padding: const EdgeInsets.all(18),
-
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(15),
-                  ),
-
-                  child: Row(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: Card(
+              elevation: 4,
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 45,
-                        height: 45,
-
-                        decoration: BoxDecoration(
-                          color:
-                              const Color(0xFFE8F1FF),
-                          borderRadius:
-                              BorderRadius.circular(12),
-                        ),
-
-                        child: const Icon(
-                          Icons.image_outlined,
-                          color:
-                              Color(0xFF1976D2),
+                      const Icon(
+                        Icons.report_problem_outlined,
+                        size: 48,
+                        color: primaryBlue,
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Report an Issue',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: primaryBlue,
                         ),
                       ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Tell us about the problem in your apartment.',
+                        style: TextStyle(
+                          color: Colors.black54,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
 
-                      const SizedBox(width: 12),
-
-                      const Expanded(
-                        child: Text(
-                          'Attach an image (optional)',
-                          style: TextStyle(
-                            fontWeight:
-                                FontWeight.w600,
+                      // Resident name
+                      const Text(
+                        'Resident Name',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _nameController,
+                        decoration: InputDecoration(
+                          hintText: 'Enter your name',
+                          prefixIcon: const Icon(Icons.person_outline),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                      ),
-
-                      OutlinedButton(
-                        onPressed: () {
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Image attachment will be available soon.',
-                              ),
-                            ),
-                          );
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter your name.';
+                          }
+                          return null;
                         },
-                        child: const Text('Add'),
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Apartment number
+                      const Text(
+                        'Apartment Number',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _apartmentController,
+                        decoration: InputDecoration(
+                          hintText: 'Example: A-101',
+                          prefixIcon: const Icon(Icons.home_outlined),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter your apartment number.';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Complaint category
+                      const Text(
+                        'Complaint Category',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedCategory,
+                        decoration: InputDecoration(
+                          hintText: 'Select category',
+                          prefixIcon: const Icon(Icons.category_outlined),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        items: _categories.map((category) {
+                          return DropdownMenuItem<String>(
+                            value: category,
+                            child: Text(category),
+                          );
+                        }).toList(),
+                        onChanged: _isSubmitting
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _selectedCategory = value;
+                                });
+                              },
+                        validator: (value) {
+                          if (value == null) {
+                            return 'Please select a category.';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Complaint description
+                      const Text(
+                        'Description',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _descriptionController,
+                        maxLines: 5,
+                        maxLength: 1000,
+                        decoration: InputDecoration(
+                          hintText: 'Describe the issue clearly...',
+                          alignLabelWithHint: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter a description.';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Submit button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          onPressed:
+                              _isSubmitting ? null : _submitComplaint,
+                          icon: _isSubmitting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.send),
+                          label: Text(
+                            _isSubmitting
+                                ? 'Submitting...'
+                                : 'Submit Complaint',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryBlue,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: Colors.blueGrey,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-
-                const SizedBox(height: 30),
-
-                // Submit
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-
-                  child: ElevatedButton.icon(
-                    onPressed: submitComplaint,
-
-                    icon: const Icon(
-                      Icons.send_outlined,
-                    ),
-
-                    label: const Text(
-                      'SUBMIT COMPLAINT',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    style:
-                        ElevatedButton.styleFrom(
-                      backgroundColor:
-                          const Color(0xFF1976D2),
-
-                      foregroundColor:
-                          Colors.white,
-
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(15),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 15),
-
-                // View complaints
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-
-                  child: OutlinedButton.icon(
-                    onPressed: openMyComplaints,
-
-                    icon: const Icon(
-                      Icons.history,
-                    ),
-
-                    label: const Text(
-                      'VIEW MY COMPLAINTS',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    style:
-                        OutlinedButton.styleFrom(
-                      foregroundColor:
-                          const Color(0xFF1976D2),
-
-                      side: const BorderSide(
-                        color: Color(0xFF1976D2),
-                      ),
-
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(15),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-              ],
+              ),
             ),
           ),
         ),
